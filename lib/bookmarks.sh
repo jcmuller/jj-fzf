@@ -38,7 +38,7 @@ B=() H=()
 
 # == Aliases ==
 # Bookmarks are managed locally, @git, @origin and possibly other remotes.
-# There are varying states, depending on wether a bookmark is tracked,
+# There are varying states, depending on whether a bookmark is tracked,
 # new/delete is unpushed, or @remote disagrees with a moved @git after
 # fetch (conflicted).
 # For the UI, we try to map the states of a bookmark name onto 1 dimension,
@@ -47,6 +47,7 @@ B=() H=()
 # In addition we list remote bookmarks that have no local name.
 #
 # Possible states:
+# [Pending]	(local, tracked, to be pushed to @origin)
 # [Deleted]	(but still tracked @origin)
 # [Conflicted]	(local, tracked, undecided @git != @origin)
 # [Tracked]	(local and @origin)
@@ -57,13 +58,15 @@ cat > $JJFZF_TEMPD/bm.toml <<\__EOF
 [template-aliases]
 # Hierarchical state categories (1D) for a bookmark name
 'bookmark_state1d(untracked)'='''
-if(!present, "Deleted",
-  if(conflict, "Conflicted",
-    if(tracked && remote && remote != "git", "Tracked",
-      if(!tracked && !remote, "Local",
-        if(!tracked && remote != "git", untracked,
-          "OTHER_REMOTE"
-        )
+if(tracked && !present, "Pending",
+  if(!present, "Deleted",
+    if(conflict, "Conflicted",
+      if(tracked && remote && remote != "git", "Tracked",
+	if(!tracked && !remote, "Local",
+	  if(!tracked && remote != "git", untracked,
+	    "OTHER_REMOTE"
+	  )
+	)
       )
     )
   )
@@ -74,7 +77,7 @@ bookmark_state1d("Untracked") ++ '¸'
 ++ name ++ '¸' ++ if(remote,"@"++remote) ++ '¸'
 ++ pad_end(32, label("bookmark", name), " ") ++ " "
 ++ pad_end(13,
-	       label(if(conflict || !present, "conflict"),
+	       label(if(conflict || (!present && !tracked), "conflict"),
 			"[" ++ bookmark_state1d("Untracked") ++ "]") )
 ++ if(present && !conflict,
      format_commit_summary_with_refs(self.normal_target(), "") )
@@ -139,7 +142,7 @@ jjfzf_bookmark_list0()
   LOCAL_BOOKMARKS=( $(jjfzf_b_l -a -T 'if(!remote, name) ++ "\n"') )
   jjfzf_b_l -a -T 'if(!remote || remote == "origin", bookmark_local1d )'  > $JJFZF_TEMPD/bm_local1d
   for B in "${LOCAL_BOOKMARKS[@]}" ; do
-    for S in "Deleted" "Conflicted" "Tracked" "Untracked" "Local" ; do # "UNKNOWN"
+    for S in "Pending" "Deleted" "Conflicted" "Tracked" "Untracked" "Local" ; do # "UNKNOWN"
       grep -m1 "^$S¸$B¸" $JJFZF_TEMPD/bm_local1d && break
     done
   done		>  $JJFZF_TEMPD/bm_refs.lst
@@ -265,6 +268,8 @@ jjfzf_refs_enter()
     O)
       if [[ "$STATE1D" == "Remote" ]] ; then
 	jjfzf_run +n jj --no-pager bookmark track -- "$REF"
+      elif [[ "$STATE1D" == "Pending" ]] ; then
+	jjfzf_run +n jj --no-pager bookmark untrack -- "$REF"@origin
       elif [[ "$STATE1D" == "Tracked" ]] ; then
 	jjfzf_run +n jj --no-pager bookmark untrack -- "$REF"@origin
       elif [[ "$STATE1D" == "Untracked" ]] ; then
